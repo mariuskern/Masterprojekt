@@ -1,0 +1,2 @@
+Der Code stammt aus dem folgenden Repository: [https://github.com/pytorch/vision](https://github.com/pytorch/vision)
+Link zur Datei: [https://github.com/pytorch/vision/blob/main/torchvision/datasets/places365.py](https://github.com/pytorch/vision/blob/main/torchvision/datasets/places365.py)
