@@ -41,6 +41,7 @@ class DINO_CLIP(nn.Module):
 
     def __init__(
         self,
+        transform=None,
         clip_model_name: str = "ViT-B/32",
         dino_model_name: str = "dinov2_vitb14",
         clip_transform=None,
@@ -59,6 +60,7 @@ class DINO_CLIP(nn.Module):
         """
         super(DINO_CLIP, self).__init__()
 
+        self.transform = transform
         self.clip_transform = clip_transform
         self.dino_transform = dino_transform
         self.K = K
@@ -208,6 +210,11 @@ class DINO_CLIP(nn.Module):
         Output:
             logits, targets
         """
+
+        if self.transform is not None:
+            im_q = self.transform(im_q)
+            if im_k is not None:
+                im_k = self.transform(im_k)
 
         img_q_clip = self.clip_model(im_q)
         img_q_dino = self.dino_model(im_q)
