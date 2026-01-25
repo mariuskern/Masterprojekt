@@ -15,12 +15,17 @@ from .dino_v2 import DINO_v2
 class FusionHead(nn.Module):
     def __init__(self, input_dim: int = 1280, output_dim: int = 512):
         super(FusionHead, self).__init__()
+        # self.fusion_head = nn.Sequential(
+        #     nn.LayerNorm(512 + 768),
+        #     nn.Linear(512 + 768, 1024),
+        #     nn.GELU(),
+        #     nn.Linear(1024, 512),
+        #     nn.LayerNorm(512)
+        # )
         self.fusion_head = nn.Sequential(
-            nn.LayerNorm(512 + 768),
-            nn.Linear(512 + 768, 1024),
-            nn.GELU(),
-            nn.Linear(1024, 512),
-            nn.LayerNorm(512)
+            nn.LayerNorm(input_dim),
+            nn.Linear(512 + 768, output_dim),
+            nn.Sigmoid(),
         )
     
     def forward(self, x1, x2):
@@ -195,7 +200,7 @@ class DINO_CLIP(nn.Module):
         # Undo shuffle (no DDP)
         return x[idx_unshuffle]
 
-    def forward(self, im_q, im_k):
+    def forward(self, im_q, im_k=None):
         """
         Input:
             im_q: a batch of query images
@@ -207,9 +212,15 @@ class DINO_CLIP(nn.Module):
         img_q_clip = self.clip_model(im_q)
         img_q_dino = self.dino_model(im_q)
 
+        img_q_clip = nn.functional.normalize(img_q_clip, p=2, dim=1)
+        img_q_dino = nn.functional.normalize(img_q_dino, p=2, dim=1)
+
         # compute query features
         q = self.encoder_q(img_q_clip, img_q_dino)  # queries: NxC
         q = nn.functional.normalize(q, dim=1)
+
+        if im_k is None:
+            return q
 
         # compute key features
         with torch.no_grad():  # no gradient to keys
@@ -220,6 +231,9 @@ class DINO_CLIP(nn.Module):
 
             img_k_clip = self.clip_model(im_k)
             img_k_dino = self.dino_model(im_k)
+
+            img_k_clip = nn.functional.normalize(img_k_clip, p=2, dim=1)
+            img_k_dino = nn.functional.normalize(img_k_dino, p=2, dim=1)
 
             k = self.encoder_k(img_k_clip, img_k_dino)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
