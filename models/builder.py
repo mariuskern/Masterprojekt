@@ -15,18 +15,37 @@ from .dino_v2 import DINO_v2
 class FusionHead(nn.Module):
     def __init__(self, input_dim: int = 1280, output_dim: int = 512):
         super(FusionHead, self).__init__()
-        self.fusion_head = nn.Sequential(
-            nn.LayerNorm(512 + 768),
-            nn.Linear(512 + 768, 1024),
-            nn.GELU(),
-            nn.Linear(1024, 512),
-            nn.LayerNorm(512)
-        )
+        # self.fusion_head = nn.Sequential(
+        #     nn.LayerNorm(512 + 768),
+        #     nn.Linear(512 + 768, 1024),
+        #     nn.GELU(),
+        #     nn.Linear(1024, 512),
+        #     nn.LayerNorm(512)
+        # )
+        # self.fusion_head = nn.Sequential(
+        #     nn.LayerNorm(512 + 768),
+        #     nn.Linear(512 + 768, 1024),
+        #     nn.GELU(),
+        #     nn.LayerNorm(1024),
+        #     nn.Linear(1024, 512),
+        #     # nn.ReLU()
+        # )
         # self.fusion_head = nn.Sequential(
         #     nn.LayerNorm(input_dim),
         #     nn.Linear(512 + 768, output_dim),
         #     nn.Sigmoid(),
         # )
+        self.fusion_head = nn.Sequential(
+            nn.LayerNorm(512 + 768),
+            nn.Linear(512 + 768, 1024),
+            nn.GELU(),
+            nn.LayerNorm(1024),
+            nn.Linear(1024, 1024),
+            nn.GELU(),
+            nn.LayerNorm(1024),
+            nn.Linear(1024, 512),
+            # nn.ReLU()
+        )
     
     def forward(self, x1, x2):
         x = torch.cat([x1, x2], dim=-1)
