@@ -12,6 +12,92 @@ from .clip_model import CLIP
 from .dino_v2 import DINO_v2
 
 
+# class FusionHeadAttention(nn.Module):
+#     def __init__(self, dim_1, dim_2, output_dim=512, num_heads=8):
+#         super().__init__()
+
+#         self.projection_1 = nn.Linear(dim_1, output_dim)
+#         self.projection_2 = nn.Linear(dim_2, output_dim)
+
+#         # Norm?
+
+#         self.attention = nn.MultiheadAttention(embed_dim=2*output_dim, num_heads=num_heads)
+
+#         self.ffn = nn.Sequential(
+#             nn.LayerNorm(2*output_dim),
+#             nn.Linear(2*output_dim, output_dim),
+#             nn.GELU(),
+#             nn.Linear(output_dim, output_dim),
+#             nn.LayerNorm(output_dim)
+#         )
+
+#     def forward(self, x1, x2):
+#         x1 = self.projection_1(x1)
+#         x2 = self.projection_2(x2)
+
+#         x = torch.cat([x1, x2], dim=-1)
+
+#         x, _ = self.attention(x, x, x)
+
+#         x = self.ffn(x)
+
+#         return x
+
+
+# class FusionHeadAttention(nn.Module):
+#     def __init__(self, dim_1, dim_2, output_dim=512, num_heads=8):
+#         super().__init__()
+
+#         self.projection_1 = nn.Sequential(
+#             nn.Linear(dim_1, output_dim),
+#             nn.LayerNorm(output_dim)
+#         )
+#         self.projection_2 = nn.Sequential(
+#             nn.Linear(dim_2, output_dim),
+#             nn.LayerNorm(output_dim)
+#         )
+
+#         self.attention = nn.MultiheadAttention(embed_dim=2*output_dim, num_heads=num_heads)
+
+#         self.ffn = nn.Sequential(
+#             nn.Linear(2*output_dim, output_dim),
+#             nn.ReLU()
+#         )
+
+#     def forward(self, x1, x2):
+#         x1 = self.projection_1(x1)
+#         x2 = self.projection_2(x2)
+
+#         x = torch.cat([x1, x2], dim=-1)
+
+#         x, _ = self.attention(x, x, x)
+
+#         x = self.ffn(x)
+
+#         return x
+    
+
+class FusionHeadAttention(nn.Module):
+    def __init__(self, input_dim: int = 1280, output_dim=512, num_heads=8):
+        super().__init__()
+
+        self.attention = nn.MultiheadAttention(embed_dim=input_dim, num_heads=num_heads)
+
+        self.ffn = nn.Sequential(
+            nn.LayerNorm(input_dim),
+            nn.Linear(input_dim, output_dim),
+            nn.ReLU()
+        )
+
+    def forward(self, x1, x2):
+        x = torch.cat([x1, x2], dim=-1)
+
+        x, _ = self.attention(x, x, x)
+        x = self.ffn(x)
+
+        return x
+
+
 class FusionHead(nn.Module):
     def __init__(self, input_dim: int = 1280, output_dim: int = 512):
         super(FusionHead, self).__init__()
@@ -35,21 +121,28 @@ class FusionHead(nn.Module):
         #     nn.Linear(512 + 768, output_dim),
         #     nn.Sigmoid(),
         # )
-        self.fusion_head = nn.Sequential(
-            nn.LayerNorm(512 + 768),
-            nn.Linear(512 + 768, 1024),
-            nn.GELU(),
-            nn.LayerNorm(1024),
-            nn.Linear(1024, 1024),
-            nn.GELU(),
-            nn.LayerNorm(1024),
-            nn.Linear(1024, 512),
-            # nn.ReLU()
-        )
+        # self.fusion_head = nn.Sequential(
+        #     nn.LayerNorm(512 + 768),
+        #     nn.Linear(512 + 768, 1024),
+        #     nn.GELU(),
+        #     nn.LayerNorm(1024),
+        #     nn.Linear(1024, 1024),
+        #     nn.GELU(),
+        #     nn.LayerNorm(1024),
+        #     nn.Linear(1024, 512),
+        #     # nn.ReLU()
+        # )
+
+        self.fusion_head = FusionHeadAttention(input_dim=input_dim, output_dim=output_dim, num_heads=8)
     
     def forward(self, x1, x2):
-        x = torch.cat([x1, x2], dim=-1)
-        return self.fusion_head(x)
+        # x = torch.cat([x1, x2], dim=-1)
+        # return self.fusion_head(x)
+
+        x1 = x1.to(torch.float32)
+        x2 = x2.to(torch.float32)
+    
+        return self.fusion_head(x1, x2)
 
 
 class DINO_CLIP(nn.Module):
