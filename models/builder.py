@@ -12,29 +12,10 @@ from .clip_model import CLIP
 from .dino_v2 import DINO_v2
 
 
-class FusionHead(nn.Module):
+class LinearFusionHead(nn.Module):
     def __init__(self, input_dim: int = 1280, output_dim: int = 512):
-        super(FusionHead, self).__init__()
-        # self.fusion_head = nn.Sequential(
-        #     nn.LayerNorm(512 + 768),
-        #     nn.Linear(512 + 768, 1024),
-        #     nn.GELU(),
-        #     nn.Linear(1024, 512),
-        #     nn.LayerNorm(512)
-        # )
-        # self.fusion_head = nn.Sequential(
-        #     nn.LayerNorm(512 + 768),
-        #     nn.Linear(512 + 768, 1024),
-        #     nn.GELU(),
-        #     nn.LayerNorm(1024),
-        #     nn.Linear(1024, 512),
-        #     # nn.ReLU()
-        # )
-        # self.fusion_head = nn.Sequential(
-        #     nn.LayerNorm(input_dim),
-        #     nn.Linear(512 + 768, output_dim),
-        #     nn.Sigmoid(),
-        # )
+        super(LinearFusionHead, self).__init__()
+
         self.fusion_head = nn.Sequential(
             nn.LayerNorm(512 + 768),
             nn.Linear(512 + 768, 1024),
@@ -52,37 +33,37 @@ class FusionHead(nn.Module):
         return self.fusion_head(x)
 
 
-# class FusionHead(nn.Module):
-#     def __init__(self, input_dim: int = 1280, output_dim: int = 512):
-#         super(FusionHead, self).__init__()
+class AttentionFusionHead(nn.Module):
+    def __init__(self, input_dim: int = 1280, output_dim: int = 512):
+        super(AttentionFusionHead, self).__init__()
 
-#         self.proj_clip = nn.Linear(512, 512)
-#         self.proj_dino = nn.Linear(768, 512)
+        self.proj_clip = nn.Linear(512, 512)
+        self.proj_dino = nn.Linear(768, 512)
 
-#         self.attention = nn.MultiheadAttention(embed_dim=512, num_heads=8, batch_first=True)
+        self.attention = nn.MultiheadAttention(embed_dim=512, num_heads=8, batch_first=True)
 
-#         self.norm = nn.LayerNorm(512)
+        self.norm = nn.LayerNorm(512)
 
-#         self.mlp = nn.Sequential(
-#             nn.Linear(512, 512),
-#             nn.GELU()
-#         )
+        self.mlp = nn.Sequential(
+            nn.Linear(512, 512),
+            nn.GELU()
+        )
     
-#     def forward(self, x1, x2):
-#         x1 = x1.to(torch.float32)
-#         x2 = x2.to(torch.float32)
+    def forward(self, x1, x2):
+        x1 = x1.to(torch.float32)
+        x2 = x2.to(torch.float32)
 
-#         x1 = self.proj_clip(x1)
-#         x2 = self.proj_dino(x2)
+        x1 = self.proj_clip(x1)
+        x2 = self.proj_dino(x2)
 
-#         x = torch.stack([x1, x2], dim=1) # (b, 2, dim)
-#         x, _ = self.attention(x, x, x)
-#         x = x.mean(dim=1) # (b, dim)
+        x = torch.stack([x1, x2], dim=1) # (b, 2, dim)
+        x, _ = self.attention(x, x, x)
+        x = x.mean(dim=1) # (b, dim)
 
-#         x = self.norm(x)
-#         x = x + self.mlp(x)
+        x = self.norm(x)
+        x = x + self.mlp(x)
     
-#         return x
+        return x
 
 
 class DINO_CLIP(nn.Module):
@@ -103,6 +84,7 @@ class DINO_CLIP(nn.Module):
         m: float = 0.999,
         T: float = 0.07,
         # mlp: bool = False,
+        fusion_head = "Linear"
     ) -> None:
         """
         dim: feature dimension (default: 512)
@@ -131,8 +113,13 @@ class DINO_CLIP(nn.Module):
 
         # create the encoders
         # num_classes is the output fc dimension
-        self.encoder_q = FusionHead(output_dim=dim)
-        self.encoder_k = FusionHead(output_dim=dim)
+        match fusion_head:
+            case "Linear":
+                self.encoder_q = LinearFusionHead(output_dim=dim)
+                self.encoder_k = LinearFusionHead(output_dim=dim)
+            case "Attention":
+                self.encoder_q = AttentionFusionHead(output_dim=dim)
+                self.encoder_k = AttentionFusionHead(output_dim=dim)
 
         # if mlp:  # hack: brute-force replacement
         #     dim_mlp = self.encoder_q.fc.weight.shape[1]
