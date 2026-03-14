@@ -13,7 +13,7 @@ from .dino_v2 import DINO_v2
 
 
 class LinearFusionHead(nn.Module):
-    def __init__(self, input_dim: int = 1280, output_dim: int = 512):
+    def __init__(self, output_dim: int = 512):
         super(LinearFusionHead, self).__init__()
 
         self.fusion_head = nn.Sequential(
@@ -24,7 +24,7 @@ class LinearFusionHead(nn.Module):
             nn.Linear(1024, 1024),
             nn.GELU(),
             nn.LayerNorm(1024),
-            nn.Linear(1024, 512),
+            nn.Linear(1024, output_dim),
             # nn.ReLU()
         )
     
@@ -34,18 +34,18 @@ class LinearFusionHead(nn.Module):
 
 
 class AttentionFusionHead(nn.Module):
-    def __init__(self, input_dim: int = 1280, output_dim: int = 512):
+    def __init__(self, output_dim: int = 512):
         super(AttentionFusionHead, self).__init__()
 
-        self.proj_clip = nn.Linear(512, 512)
-        self.proj_dino = nn.Linear(768, 512)
+        self.proj_clip = nn.Linear(512, output_dim)
+        self.proj_dino = nn.Linear(768, output_dim)
 
-        self.attention = nn.MultiheadAttention(embed_dim=512, num_heads=8, batch_first=True)
+        self.attention = nn.MultiheadAttention(embed_dim=output_dim, num_heads=8, batch_first=True)
 
-        self.norm = nn.LayerNorm(512)
+        self.norm = nn.LayerNorm(output_dim)
 
         self.mlp = nn.Sequential(
-            nn.Linear(512, 512),
+            nn.Linear(output_dim, output_dim),
             nn.GELU()
         )
     
