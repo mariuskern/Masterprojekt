@@ -33,6 +33,20 @@ class LinearFusionHead(nn.Module):
         return self.fusion_head(x)
 
 
+# class LinearFusionHead(nn.Module):
+#     def __init__(self, output_dim: int = 512):
+#         super(LinearFusionHead, self).__init__()
+
+#         self.fusion_head = nn.Sequential(
+#             nn.LayerNorm(512 + 768),
+#             nn.Linear(512 + 768, output_dim),
+#         )
+    
+#     def forward(self, x1, x2):
+#         x = torch.cat([x1, x2], dim=-1)
+#         return self.fusion_head(x)
+
+
 class AttentionFusionHead(nn.Module):
     def __init__(self, output_dim: int = 512):
         super(AttentionFusionHead, self).__init__()
