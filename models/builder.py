@@ -13,24 +13,34 @@ from .dino_v2 import DINO_v2
 
 
 class LinearFusionHead(nn.Module):
-    def __init__(self, output_dim: int = 512):
+    def __init__(self, output_dim: int = 512, weighted_concat: bool = False):
         super(LinearFusionHead, self).__init__()
 
+        self.weighted_concat = weighted_concat
+        self.alpha = nn.Parameter(torch.tensor(0.5))
+
         self.fusion_head = nn.Sequential(
-            nn.LayerNorm(512 + 768),
+            # nn.LayerNorm(512 + 768),
             nn.Linear(512 + 768, 1024),
             nn.GELU(),
-            nn.LayerNorm(1024),
-            nn.Linear(1024, 1024),
-            nn.GELU(),
-            nn.LayerNorm(1024),
+            # nn.LayerNorm(1024),
+            # nn.Linear(1024, 1024),
+            # nn.GELU(),
+            # nn.LayerNorm(1024),
             nn.Linear(1024, output_dim),
             # nn.ReLU()
         )
     
     def forward(self, x1, x2):
+        if self.weighted_concat:
+            alpha = torch.sigmoid(self.alpha)
+            x1 = alpha * x1
+            x2 = (1 - alpha) * x2
+        
         x = torch.cat([x1, x2], dim=-1)
-        return self.fusion_head(x)
+        x = self.fusion_head(x)
+        x = nn.functional.normalize(x, dim=1)
+        return x
 
 
 # class LinearFusionHead(nn.Module):
@@ -76,6 +86,8 @@ class AttentionFusionHead(nn.Module):
 
         x = self.norm(x)
         x = x + self.mlp(x)
+
+        x = nn.functional.normalize(x, dim=1)
     
         return x
 
@@ -98,7 +110,8 @@ class DINO_CLIP(nn.Module):
         m: float = 0.999,
         T: float = 0.07,
         # mlp: bool = False,
-        fusion_head = "Linear"
+        fusion_head = "Linear",
+        weighted_concat = False
     ) -> None:
         """
         dim: feature dimension (default: 512)
@@ -107,6 +120,9 @@ class DINO_CLIP(nn.Module):
         T: softmax temperature (default: 0.07)
         """
         super(DINO_CLIP, self).__init__()
+
+        if fusion_head is not "Linear" and weighted_concat:
+            raise ValueError("weighted_concat is only supported for Linear fusion head")
 
         self.transform = transform
         self.clip_transform = clip_transform
@@ -129,8 +145,8 @@ class DINO_CLIP(nn.Module):
         # num_classes is the output fc dimension
         match fusion_head:
             case "Linear":
-                self.encoder_q = LinearFusionHead(output_dim=dim)
-                self.encoder_k = LinearFusionHead(output_dim=dim)
+                self.encoder_q = LinearFusionHead(output_dim=dim, weighted_concat=weighted_concat)
+                self.encoder_k = LinearFusionHead(output_dim=dim, weighted_concat=weighted_concat)
             case "Attention":
                 self.encoder_q = AttentionFusionHead(output_dim=dim)
                 self.encoder_k = AttentionFusionHead(output_dim=dim)
@@ -277,7 +293,7 @@ class DINO_CLIP(nn.Module):
 
         # compute query features
         q = self.encoder_q(img_q_clip, img_q_dino)  # queries: NxC
-        q = nn.functional.normalize(q, dim=1)
+        # q = nn.functional.normalize(q, dim=1)
 
         if im_k is None:
             return q
@@ -296,7 +312,7 @@ class DINO_CLIP(nn.Module):
             img_k_dino = nn.functional.normalize(img_k_dino, p=2, dim=1)
 
             k = self.encoder_k(img_k_clip, img_k_dino)  # keys: NxC
-            k = nn.functional.normalize(k, dim=1)
+            # k = nn.functional.normalize(k, dim=1)
 
             # undo shuffle
             k = self._batch_unshuffle_without_dpp(k, idx_unshuffle)
