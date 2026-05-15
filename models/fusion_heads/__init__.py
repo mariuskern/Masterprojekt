@@ -1,0 +1,3 @@
+from .attention import AttentionFusionHead
+from .linear_old import LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas
+from .linear import LinearFusionHeadBase

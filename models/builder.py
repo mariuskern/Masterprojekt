@@ -10,86 +10,7 @@ import torch.nn as nn
 
 from .clip_model import CLIP
 from .dino_v2 import DINO_v2
-
-
-class LinearFusionHead(nn.Module):
-    def __init__(self, output_dim: int = 512, weighted_concat: bool = False):
-        super(LinearFusionHead, self).__init__()
-
-        self.weighted_concat = weighted_concat
-        self.alpha = nn.Parameter(torch.tensor(0.5))
-
-        self.fusion_head = nn.Sequential(
-            # nn.LayerNorm(512 + 768),
-            nn.Linear(512 + 768, 1024),
-            nn.GELU(),
-            # nn.LayerNorm(1024),
-            # nn.Linear(1024, 1024),
-            # nn.GELU(),
-            # nn.LayerNorm(1024),
-            nn.Linear(1024, output_dim),
-            # nn.ReLU()
-        )
-    
-    def forward(self, x1, x2):
-        if self.weighted_concat:
-            alpha = torch.sigmoid(self.alpha)
-            x1 = alpha * x1
-            x2 = (1 - alpha) * x2
-        
-        x = torch.cat([x1, x2], dim=-1)
-        x = self.fusion_head(x)
-        x = nn.functional.normalize(x, dim=1)
-        return x
-
-
-# class LinearFusionHead(nn.Module):
-#     def __init__(self, output_dim: int = 512):
-#         super(LinearFusionHead, self).__init__()
-
-#         self.fusion_head = nn.Sequential(
-#             nn.LayerNorm(512 + 768),
-#             nn.Linear(512 + 768, output_dim),
-#         )
-    
-#     def forward(self, x1, x2):
-#         x = torch.cat([x1, x2], dim=-1)
-#         return self.fusion_head(x)
-
-
-class AttentionFusionHead(nn.Module):
-    def __init__(self, output_dim: int = 512):
-        super(AttentionFusionHead, self).__init__()
-
-        self.proj_clip = nn.Linear(512, output_dim)
-        self.proj_dino = nn.Linear(768, output_dim)
-
-        self.attention = nn.MultiheadAttention(embed_dim=output_dim, num_heads=8, batch_first=True)
-
-        self.norm = nn.LayerNorm(output_dim)
-
-        self.mlp = nn.Sequential(
-            nn.Linear(output_dim, output_dim),
-            nn.GELU()
-        )
-    
-    def forward(self, x1, x2):
-        x1 = x1.to(torch.float32)
-        x2 = x2.to(torch.float32)
-
-        x1 = self.proj_clip(x1)
-        x2 = self.proj_dino(x2)
-
-        x = torch.stack([x1, x2], dim=1) # (b, 2, dim)
-        x, _ = self.attention(x, x, x)
-        x = x.mean(dim=1) # (b, dim)
-
-        x = self.norm(x)
-        x = x + self.mlp(x)
-
-        x = nn.functional.normalize(x, dim=1)
-    
-        return x
+from .fusion_heads import AttentionFusionHead, LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas, LinearFusionHeadBase
 
 
 class DINO_CLIP(nn.Module):
@@ -111,7 +32,10 @@ class DINO_CLIP(nn.Module):
         T: float = 0.07,
         # mlp: bool = False,
         fusion_head = "Linear",
-        weighted_concat = False
+        use_weighted_concat = False,
+        use_dino_cls_and_patch_tokens = False,
+        use_proj = False,
+        proj_dim = 512
     ) -> None:
         """
         dim: feature dimension (default: 512)
@@ -121,8 +45,11 @@ class DINO_CLIP(nn.Module):
         """
         super(DINO_CLIP, self).__init__()
 
-        if fusion_head is not "Linear" and weighted_concat:
-            raise ValueError("weighted_concat is only supported for Linear fusion head")
+        if "Linear" not in fusion_head and use_weighted_concat:
+            raise ValueError("use_weighted_concat is only supported for Linear fusion head")
+
+        if (fusion_head is "LinearSmallOld" or fusion_head is "LinearBaseOld") and use_dino_cls_and_patch_tokens:
+            raise ValueError("use_dino_cls_and_patch_tokens is not supported for LinearSmallOld and LinearBaseOld fusion heads")
 
         self.transform = transform
         self.clip_transform = clip_transform
@@ -130,23 +57,48 @@ class DINO_CLIP(nn.Module):
         self.K = K
         self.m = m
         self.T = T
+        self.use_weighted_concat = use_weighted_concat
+        self.use_dino_cls_and_patch_tokens = use_dino_cls_and_patch_tokens
+        self.use_proj = use_proj
+        self.proj_dim = proj_dim
 
         self.clip_model = CLIP(model_name=clip_model_name, transform=clip_transform)
         for p in self.clip_model.parameters():
             p.requires_grad = False
         self.clip_model = self.clip_model.eval()
 
-        self.dino_model = DINO_v2(model_name=dino_model_name, transform=dino_transform)
+        self.dino_model = DINO_v2(model_name=dino_model_name, transform=dino_transform, return_features=use_dino_cls_and_patch_tokens)
         for p in self.dino_model.parameters():
             p.requires_grad = False
         self.dino_model = self.dino_model.eval()
 
         # create the encoders
         # num_classes is the output fc dimension
+
+        if use_dino_cls_and_patch_tokens:
+            input_dims = [512, 768, 768]
+        else:
+            input_dims = [512, 768]
+
         match fusion_head:
-            case "Linear":
-                self.encoder_q = LinearFusionHead(output_dim=dim, weighted_concat=weighted_concat)
-                self.encoder_k = LinearFusionHead(output_dim=dim, weighted_concat=weighted_concat)
+            case "LinearSmallOldNoAlpha":
+                self.encoder_q = LinearFusionHeadSmallOldNoAlpha(output_dim=dim)
+                self.encoder_k = LinearFusionHeadSmallOldNoAlpha(output_dim=dim)
+            case "LinearBaseOldNoAlpha":
+                self.encoder_q = LinearFusionHeadBaseOldNoAlpha(output_dim=dim)
+                self.encoder_k = LinearFusionHeadBaseOldNoAlpha(output_dim=dim)
+            case "LinearSmallOldOneAlpha":
+                self.encoder_q = LinearFusionHeadSmallOldOneAlpha(output_dim=dim, weighted_concat=use_weighted_concat)
+                self.encoder_k = LinearFusionHeadSmallOldOneAlpha(output_dim=dim, weighted_concat=use_weighted_concat)
+            case "LinearBaseOldOneAlpha":
+                self.encoder_q = LinearFusionHeadBaseOldOneAlpha(output_dim=dim, weighted_concat=use_weighted_concat)
+                self.encoder_k = LinearFusionHeadBaseOldOneAlpha(output_dim=dim, weighted_concat=use_weighted_concat)
+            case "LinearBaseOldThreeAlphas":
+                self.encoder_q = LinearFusionHeadBaseOldThreeAlphas(output_dim=dim, weighted_concat=use_weighted_concat)
+                self.encoder_k = LinearFusionHeadBaseOldThreeAlphas(output_dim=dim, weighted_concat=use_weighted_concat)
+            case "LinearBase":
+                self.encoder_q = LinearFusionHeadBase(input_dims=input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
+                self.encoder_k = LinearFusionHeadBase(input_dims=input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
             case "Attention":
                 self.encoder_q = AttentionFusionHead(output_dim=dim)
                 self.encoder_k = AttentionFusionHead(output_dim=dim)
@@ -286,14 +238,23 @@ class DINO_CLIP(nn.Module):
                 im_k = self.transform(im_k)
 
         img_q_clip = self.clip_model(im_q)
-        img_q_dino = self.dino_model(im_q)
-
         img_q_clip = nn.functional.normalize(img_q_clip, p=2, dim=1)
-        img_q_dino = nn.functional.normalize(img_q_dino, p=2, dim=1)
 
-        # compute query features
-        q = self.encoder_q(img_q_clip, img_q_dino)  # queries: NxC
-        # q = nn.functional.normalize(q, dim=1)
+        if self.use_dino_cls_and_patch_tokens:
+            img_q_dino_cls, img_q_dino_patch = self.dino_model(im_q)
+            img_q_dino_cls = nn.functional.normalize(img_q_dino_cls, p=2, dim=1)
+            img_q_dino_patch = nn.functional.normalize(img_q_dino_patch, p=2, dim=1)
+            # compute query features
+            q = self.encoder_q(img_q_clip, img_q_dino_cls, img_q_dino_patch)  # queries: NxC
+        else:
+            img_q_dino = self.dino_model(im_q)
+            img_q_dino = nn.functional.normalize(img_q_dino, p=2, dim=1)
+            # compute query features
+            q = self.encoder_q(img_q_clip, img_q_dino)  # queries: NxC
+
+        # # compute query features
+        # q = self.encoder_q(img_q_clip, img_q_dino_cls, img_q_dino_patch)  # queries: NxC
+        # # q = nn.functional.normalize(q, dim=1)
 
         if im_k is None:
             return q
@@ -306,13 +267,24 @@ class DINO_CLIP(nn.Module):
             im_k, idx_unshuffle = self._batch_shuffle_without_dpp(im_k)
 
             img_k_clip = self.clip_model(im_k)
-            img_k_dino = self.dino_model(im_k)
-
             img_k_clip = nn.functional.normalize(img_k_clip, p=2, dim=1)
-            img_k_dino = nn.functional.normalize(img_k_dino, p=2, dim=1)
 
-            k = self.encoder_k(img_k_clip, img_k_dino)  # keys: NxC
-            # k = nn.functional.normalize(k, dim=1)
+            if self.use_dino_cls_and_patch_tokens:
+                img_k_dino_cls, img_k_dino_patch = self.dino_model(im_k)
+                img_k_dino_cls = nn.functional.normalize(img_k_dino_cls, p=2, dim=1)
+                img_k_dino_patch = nn.functional.normalize(img_k_dino_patch, p=2, dim=1)
+                k = self.encoder_k(img_k_clip, img_k_dino_cls, img_k_dino_patch)  # keys: NxC
+            else:
+                img_k_dino = self.dino_model(im_k)
+                img_k_dino = nn.functional.normalize(img_k_dino, p=2, dim=1)
+                k = self.encoder_k(img_k_clip, img_k_dino)  # keys: NxC
+
+            # img_k_clip = nn.functional.normalize(img_k_clip, p=2, dim=1)
+            # img_k_dino_cls = nn.functional.normalize(img_k_dino_cls, p=2, dim=1)
+            # img_k_dino_patch = nn.functional.normalize(img_k_dino_patch, p=2, dim=1)
+
+            # k = self.encoder_k(img_k_clip, img_k_dino_cls, img_k_dino_patch)  # keys: NxC
+            # # k = nn.functional.normalize(k, dim=1)
 
             # undo shuffle
             k = self._batch_unshuffle_without_dpp(k, idx_unshuffle)

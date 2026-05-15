@@ -30,7 +30,11 @@ def create_model(model_info, device=torch.device("cuda" if torch.cuda.is_availab
                 K=model_info["K"],
                 # m=model_info["m"],
                 # T=model_info["T"],
-                fusion_head=model_info["fusion_head"]
+                fusion_head=model_info["fusion_head"],
+                use_weighted_concat = model_info["use_weighted_concat"],
+                use_dino_cls_and_patch_tokens = model_info["use_dino_cls_and_patch_tokens"],
+                use_proj = model_info["use_proj"],
+                proj_dim = model_info["proj_dim"]
             )
             if model_info["weights"] is not None:
                 model.load_state_dict(torch.load(model_info["weights"]))
@@ -43,7 +47,7 @@ def create_model(model_info, device=torch.device("cuda" if torch.cuda.is_availab
 
 def extract_features(model, dataloader, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     """
-    Extract features and labels from the dataloader using the provided model.
+    Extract features and labels from the dataloader using the provided model. Returns features and labels as a numpy array.
     """
 
     features = []
@@ -58,6 +62,9 @@ def extract_features(model, dataloader, device=torch.device("cuda" if torch.cuda
 
         features.extend(features_batch)
         labels.extend(labels_batch)
+
+    features = np.array(features).astype("float32")
+    labels = np.array(labels)
     
     return features, labels
 
