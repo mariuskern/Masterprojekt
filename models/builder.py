@@ -10,7 +10,8 @@ import torch.nn as nn
 
 from .clip_model import CLIP
 from .dino_v2 import DINO_v2
-from .fusion_heads import AttentionFusionHead, LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas, LinearFusionHeadBase
+from .convnext import ConvNeXtv2
+from .fusion_heads import AttentionFusionHead, LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas, LinearFusionHeadSmall, LinearFusionHeadBase
 
 
 class DINO_CLIP(nn.Module):
@@ -24,8 +25,11 @@ class DINO_CLIP(nn.Module):
         transform=None,
         clip_model_name: str = "ViT-B/32",
         dino_model_name: str = "dinov2_vitb14",
+        use_dino_cls_and_patch_tokens: bool = False,
+        convnext_model_name: str = "convnextv2_nano.fcmae_ft_in22k_in1k",
         clip_transform=None,
         dino_transform=None,
+        convnext_transform=None,
         dim: int = 512,
         K: int = 65536,
         m: float = 0.999,
@@ -33,7 +37,6 @@ class DINO_CLIP(nn.Module):
         # mlp: bool = False,
         fusion_head = "Linear",
         use_weighted_concat = False,
-        use_dino_cls_and_patch_tokens = False,
         use_proj = False,
         proj_dim = 512
     ) -> None:
@@ -48,12 +51,13 @@ class DINO_CLIP(nn.Module):
         if "Linear" not in fusion_head and use_weighted_concat:
             raise ValueError("use_weighted_concat is only supported for Linear fusion head")
 
-        if (fusion_head is "LinearSmallOld" or fusion_head is "LinearBaseOld") and use_dino_cls_and_patch_tokens:
+        if (fusion_head == "LinearSmallOld" or fusion_head == "LinearBaseOld") and use_dino_cls_and_patch_tokens:
             raise ValueError("use_dino_cls_and_patch_tokens is not supported for LinearSmallOld and LinearBaseOld fusion heads")
 
         self.transform = transform
         self.clip_transform = clip_transform
         self.dino_transform = dino_transform
+        self.convnext_transform = convnext_transform
         self.K = K
         self.m = m
         self.T = T
@@ -62,23 +66,48 @@ class DINO_CLIP(nn.Module):
         self.use_proj = use_proj
         self.proj_dim = proj_dim
 
-        self.clip_model = CLIP(model_name=clip_model_name, transform=clip_transform)
-        for p in self.clip_model.parameters():
-            p.requires_grad = False
-        self.clip_model = self.clip_model.eval()
+        self.input_dims = []
+        self.input_names = []
+        self.models = []
 
-        self.dino_model = DINO_v2(model_name=dino_model_name, transform=dino_transform, return_features=use_dino_cls_and_patch_tokens)
-        for p in self.dino_model.parameters():
-            p.requires_grad = False
-        self.dino_model = self.dino_model.eval()
+        if clip_model_name is not None:
+            self.clip_model = CLIP(model_name=clip_model_name, transform=clip_transform)
+            for p in self.clip_model.parameters():
+                p.requires_grad = False
+            self.clip_model = self.clip_model.eval()
+            self.input_dims.append(512)
+            self.input_names.append("clip")
+            self.models.append(self.clip_model)
+
+        if dino_model_name is not None:
+            self.dino_model = DINO_v2(model_name=dino_model_name, transform=dino_transform, return_features=use_dino_cls_and_patch_tokens)
+            for p in self.dino_model.parameters():
+                p.requires_grad = False
+            self.dino_model = self.dino_model.eval()
+            self.models.append(self.dino_model)
+            if use_dino_cls_and_patch_tokens:
+                self.input_dims.extend([768, 768])
+                self.input_names.extend(["dino_cls", "dino_patch"])
+            else:
+                self.input_dims.append(768)
+                self.input_names.append("dino")
+
+        if convnext_model_name is not None:
+            self.convnext_model = ConvNeXtv2(model_name=convnext_model_name, transform=convnext_transform)
+            for p in self.convnext_model.parameters():
+                p.requires_grad = False
+            self.convnext_model = self.convnext_model.eval()
+            self.input_dims.append(640)
+            self.input_names.append("convnext")
+            self.models.append(self.convnext_model)
 
         # create the encoders
         # num_classes is the output fc dimension
 
-        if use_dino_cls_and_patch_tokens:
-            input_dims = [512, 768, 768]
-        else:
-            input_dims = [512, 768]
+        # if use_dino_cls_and_patch_tokens:
+        #     input_dims = [512, 768, 768]
+        # else:
+        #     input_dims = [512, 768]
 
         match fusion_head:
             case "LinearSmallOldNoAlpha":
@@ -96,9 +125,12 @@ class DINO_CLIP(nn.Module):
             case "LinearBaseOldThreeAlphas":
                 self.encoder_q = LinearFusionHeadBaseOldThreeAlphas(output_dim=dim, weighted_concat=use_weighted_concat)
                 self.encoder_k = LinearFusionHeadBaseOldThreeAlphas(output_dim=dim, weighted_concat=use_weighted_concat)
+            case "LinearSmall":
+                self.encoder_q = LinearFusionHeadSmall(input_dims=self.input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
+                self.encoder_k = LinearFusionHeadSmall(input_dims=self.input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
             case "LinearBase":
-                self.encoder_q = LinearFusionHeadBase(input_dims=input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
-                self.encoder_k = LinearFusionHeadBase(input_dims=input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
+                self.encoder_q = LinearFusionHeadBase(input_dims=self.input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
+                self.encoder_k = LinearFusionHeadBase(input_dims=self.input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
             case "Attention":
                 self.encoder_q = AttentionFusionHead(output_dim=dim)
                 self.encoder_k = AttentionFusionHead(output_dim=dim)
@@ -222,6 +254,32 @@ class DINO_CLIP(nn.Module):
     def _batch_unshuffle_without_dpp(self, x, idx_unshuffle):
         # Undo shuffle (no DDP)
         return x[idx_unshuffle]
+    
+    def get_alphas(self):
+        alphas = {}
+        # for i, name in enumerate(self.input_names):
+        #     alpha_name = f"alpha_{name}"
+        #     if hasattr(self.encoder_q, alpha_name):
+        #         alphas[name] = getattr(self.encoder_q, alpha_name).item()
+        #     else:
+        #         alphas[name] = None
+        for i, alpha in enumerate(self.encoder_q.alphas):
+            name = f"{self.input_names[i]}_alpha"
+            alphas[name] = alpha
+        return alphas
+    
+    def _forward_helper(self, im):
+        im_models = []
+        for model in self.models:
+            im_model = model(im)
+
+            if isinstance(im_model, tuple):
+                im_model = [nn.functional.normalize(x, p=2, dim=1) for x in im_model]
+                im_models.extend(im_model)
+            else:
+                im_model = nn.functional.normalize(im_model, p=2, dim=1)
+                im_models.append(im_model)
+        return im_models
 
     def forward(self, im_q, im_k=None):
         """
@@ -236,21 +294,27 @@ class DINO_CLIP(nn.Module):
             im_q = self.transform(im_q)
             if im_k is not None:
                 im_k = self.transform(im_k)
+        
+        im_q_models = self._forward_helper(im_q)
+        q = self.encoder_q(*im_q_models)
 
-        img_q_clip = self.clip_model(im_q)
-        img_q_clip = nn.functional.normalize(img_q_clip, p=2, dim=1)
+        # img_q_clip = self.clip_model(im_q)
+        # img_q_clip = nn.functional.normalize(img_q_clip, p=2, dim=1)
 
-        if self.use_dino_cls_and_patch_tokens:
-            img_q_dino_cls, img_q_dino_patch = self.dino_model(im_q)
-            img_q_dino_cls = nn.functional.normalize(img_q_dino_cls, p=2, dim=1)
-            img_q_dino_patch = nn.functional.normalize(img_q_dino_patch, p=2, dim=1)
-            # compute query features
-            q = self.encoder_q(img_q_clip, img_q_dino_cls, img_q_dino_patch)  # queries: NxC
-        else:
-            img_q_dino = self.dino_model(im_q)
-            img_q_dino = nn.functional.normalize(img_q_dino, p=2, dim=1)
-            # compute query features
-            q = self.encoder_q(img_q_clip, img_q_dino)  # queries: NxC
+        # img_q_convnext = self.convnext_model(im_q)
+        # img_q_convnext = nn.functional.normalize(img_q_convnext, p=2, dim=1)
+
+        # if self.use_dino_cls_and_patch_tokens:
+        #     img_q_dino_cls, img_q_dino_patch = self.dino_model(im_q)
+        #     img_q_dino_cls = nn.functional.normalize(img_q_dino_cls, p=2, dim=1)
+        #     img_q_dino_patch = nn.functional.normalize(img_q_dino_patch, p=2, dim=1)
+        #     # compute query features
+        #     q = self.encoder_q(img_q_clip, img_q_dino_cls, img_q_dino_patch, img_q_convnext)  # queries: NxC
+        # else:
+        #     img_q_dino = self.dino_model(im_q)
+        #     img_q_dino = nn.functional.normalize(img_q_dino, p=2, dim=1)
+        #     # compute query features
+        #     q = self.encoder_q(img_q_clip, img_q_dino, img_q_convnext)  # queries: NxC
 
         # # compute query features
         # q = self.encoder_q(img_q_clip, img_q_dino_cls, img_q_dino_patch)  # queries: NxC
@@ -266,18 +330,24 @@ class DINO_CLIP(nn.Module):
             # shuffle for making use of BN
             im_k, idx_unshuffle = self._batch_shuffle_without_dpp(im_k)
 
-            img_k_clip = self.clip_model(im_k)
-            img_k_clip = nn.functional.normalize(img_k_clip, p=2, dim=1)
+            im_k_models = self._forward_helper(im_k)
+            k = self.encoder_k(*im_k_models)
 
-            if self.use_dino_cls_and_patch_tokens:
-                img_k_dino_cls, img_k_dino_patch = self.dino_model(im_k)
-                img_k_dino_cls = nn.functional.normalize(img_k_dino_cls, p=2, dim=1)
-                img_k_dino_patch = nn.functional.normalize(img_k_dino_patch, p=2, dim=1)
-                k = self.encoder_k(img_k_clip, img_k_dino_cls, img_k_dino_patch)  # keys: NxC
-            else:
-                img_k_dino = self.dino_model(im_k)
-                img_k_dino = nn.functional.normalize(img_k_dino, p=2, dim=1)
-                k = self.encoder_k(img_k_clip, img_k_dino)  # keys: NxC
+            # img_k_clip = self.clip_model(im_k)
+            # img_k_clip = nn.functional.normalize(img_k_clip, p=2, dim=1)
+
+            # img_k_convnext = self.convnext_model(im_k)
+            # img_k_convnext = nn.functional.normalize(img_k_convnext, p=2, dim=1)
+
+            # if self.use_dino_cls_and_patch_tokens:
+            #     img_k_dino_cls, img_k_dino_patch = self.dino_model(im_k)
+            #     img_k_dino_cls = nn.functional.normalize(img_k_dino_cls, p=2, dim=1)
+            #     img_k_dino_patch = nn.functional.normalize(img_k_dino_patch, p=2, dim=1)
+            #     k = self.encoder_k(img_k_clip, img_k_dino_cls, img_k_dino_patch, img_k_convnext)  # keys: NxC
+            # else:
+            #     img_k_dino = self.dino_model(im_k)
+            #     img_k_dino = nn.functional.normalize(img_k_dino, p=2, dim=1)
+            #     k = self.encoder_k(img_k_clip, img_k_dino, img_k_convnext)  # keys: NxC
 
             # img_k_clip = nn.functional.normalize(img_k_clip, p=2, dim=1)
             # img_k_dino_cls = nn.functional.normalize(img_k_dino_cls, p=2, dim=1)

@@ -1,4 +1,4 @@
-DEST = r"C:\Users\mariu\Documents\Studium\Masterprojekt\Evaluation"
+DEST = r"D:\Dokumente\Studium\Masterprojekt\Evaluation"
 
 DISTANCE = "l2"
 
