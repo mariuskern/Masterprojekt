@@ -308,7 +308,7 @@ class DINO_CLIP(nn.Module):
         # dequeue and enqueue
         self._dequeue_and_enqueue_without_dpp(k)
 
-        return logits, labels
+        return logits, labels, q
 
 
 # utils

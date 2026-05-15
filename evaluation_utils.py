@@ -2,6 +2,8 @@ import torch
 import numpy as np
 from collections import Counter
 from sklearn.metrics import confusion_matrix
+from tqdm import tqdm
+import faiss
 
 from models import CLIP, DINO_v2, CombinedModel, DINO_CLIP
 from datasets import Transforms
@@ -45,6 +47,16 @@ def create_model(model_info, device=torch.device("cuda" if torch.cuda.is_availab
     model = model.to(device)
     return model
 
+def extract_and_evaluate_features(model, model_name, dataloader, dataset_name, distance, ks):
+    tqdm_dataloader = tqdm(dataloader, unit="batch")
+    tqdm_dataloader.set_description(f"Extracting features ({model_name}, {dataset_name})")
+
+    features, labels = extract_features(model, tqdm_dataloader)
+
+    result = evaluate_features(features, labels, distance, ks)
+
+    return result
+
 def extract_features(model, dataloader, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
     """
     Extract features and labels from the dataloader using the provided model. Returns features and labels as a numpy array.
@@ -67,6 +79,48 @@ def extract_features(model, dataloader, device=torch.device("cuda" if torch.cuda
     labels = np.array(labels)
     
     return features, labels
+
+def evaluate_features(features, labels, distance, ks):
+    result = {
+        "per_class": {
+            "mean": {},
+            "std": {},
+            "matrix": {}
+        }
+    }
+
+    match distance:
+        case "l2":
+            index = faiss.IndexFlatL2(features.shape[1])
+        case "cosine":
+            faiss.normalize_L2(features)
+            index = faiss.IndexFlatIP(features.shape[1])
+    
+    index.add(features)
+
+    _, I = index.search(features, max(ks) + 1)  # + 1 to account for self-match
+    I = I[:, 1:]  # Remove self-match
+
+    for k in ks:
+        overall_accuracy, accuracy_mean, accuracy_std, accuracy_per_class, accuracy_matrix = calculate_accuracy(I, labels, k)
+        precision_mean, precision_std, precision_per_class, precision_matrix = calculate_precision(I, labels, k)
+        recall_mean, recall_std, recall_per_class, recall_matrix = calculate_recall(I, labels, k)
+
+        result["Accuracy@" + str(k)] = overall_accuracy
+        result["per_class"]["mean"]["Accuracy@" + str(k)] = accuracy_mean
+        result["per_class"]["mean"]["Precision@" + str(k)] = precision_mean
+        result["per_class"]["mean"]["Recall@" + str(k)] = recall_mean
+        result["per_class"]["std"]["Accuracy@" + str(k)] = accuracy_std
+        result["per_class"]["std"]["Precision@" + str(k)] = precision_std
+        result["per_class"]["std"]["Recall@" + str(k)] = recall_std
+        result["per_class"]["matrix"]["Accuracy@" + str(k)] = accuracy_matrix
+        result["per_class"]["matrix"]["Precision@" + str(k)] = precision_matrix
+        result["per_class"]["matrix"]["Recall@" + str(k)] = recall_matrix
+        result["per_class"]["Accuracy@" + str(k)] = accuracy_per_class
+        result["per_class"]["Precision@" + str(k)] = precision_per_class
+        result["per_class"]["Recall@" + str(k)] = recall_per_class
+    
+    return result
 
 def calculate_accuracy(I, labels, k):
     """
