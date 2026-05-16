@@ -33,6 +33,8 @@ class AbstractLinearFusionHead(nn.Module, ABC):
         assert len(inputs) == len(self.input_dims)
 
         inputs = list(inputs)
+        for i in range(len(inputs)):
+            inputs[i] = inputs[i].to(torch.float32)
         
         if self.use_proj:
             for i in range(len(inputs)):
