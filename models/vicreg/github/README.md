@@ -1,0 +1,1 @@
+Der Code stammt aus dem folgenden Repository: [https://github.com/facebookresearch/vicreg](https://github.com/facebookresearch/vicreg)
