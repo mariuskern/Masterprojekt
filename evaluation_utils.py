@@ -6,6 +6,7 @@ from tqdm import tqdm
 import faiss
 
 from models import CLIP, DINO_v2, CombinedModel, DINO_CLIP
+from models.vicreg.main_vicreg import VICReg
 from datasets import Transforms
 
 
@@ -42,6 +43,22 @@ def create_model(model_info, device=torch.device("cuda" if torch.cuda.is_availab
             )
             if model_info["weights"] is not None:
                 model.load_state_dict(torch.load(model_info["weights"]))
+        case "VICReg":
+            model = VICReg(
+                0,
+                clip_model_name = model_info["clip_model_name"],
+                dino_model_name = model_info["dino_model_name"],
+                convnext_model_name = model_info["convnext_model_name"],
+                use_dino_cls_and_patch_tokens = model_info["use_dino_cls_and_patch_tokens"],
+                clip_transform=Transforms.CLIP.value,
+                dino_transform=Transforms.DINO_v2.value,
+                convnext_transform = Transforms.CONVNEXT.value,
+                fusion_head=model_info["fusion_head"],
+                dim = model_info["dim"],
+                use_weighted_concat = model_info["use_weighted_concat"],
+                use_proj = model_info["use_proj"],
+                proj_dim = model_info["proj_dim"]
+            )
     
     for p in model.parameters():
         p.requires_grad = False

@@ -189,9 +189,9 @@ class VICReg(nn.Module):
     def __init__(
             self,
             batch_size,
-            sim_coeff,
-            std_coeff,
-            cov_coeff,
+            # sim_coeff,
+            # std_coeff,
+            # cov_coeff,
             transform=None,
             clip_model_name: str = "ViT-B/32",
             dino_model_name: str = "dinov2_vitb14",
@@ -204,16 +204,17 @@ class VICReg(nn.Module):
             dim: int = 512,
             use_weighted_concat = False,
             use_proj = False,
-            proj_dim = 512
+            proj_dim = 512,
+            projection_head_dims = [2048, 2048, 256]
         ):
 
         super().__init__()
 
         self.transform = transform
         self.batch_size = batch_size
-        self.sim_coeff = sim_coeff
-        self.std_coeff = std_coeff
-        self.cov_coeff = cov_coeff
+        # self.sim_coeff = sim_coeff
+        # self.std_coeff = std_coeff
+        # self.cov_coeff = cov_coeff
         self.num_features = dim
 
         # self.args = args
@@ -270,17 +271,25 @@ class VICReg(nn.Module):
             case "Attention":
                 self.fusion_head = AttentionFusionHead(output_dim=dim)
         
-        self.projector = nn.Sequential(
-            nn.Linear(dim, 2048),
-            nn.BatchNorm1d(2048),
-            nn.GELU(),
+        # self.projector = nn.Sequential(
+        #     nn.Linear(dim, 2048),
+        #     nn.BatchNorm1d(2048),
+        #     nn.GELU(),
 
-            nn.Linear(2048, 2048),
-            nn.BatchNorm1d(2048),
-            nn.GELU(),
+        #     nn.Linear(2048, 2048),
+        #     nn.BatchNorm1d(2048),
+        #     nn.GELU(),
 
-            nn.Linear(2048, 256)
-        )
+        #     nn.Linear(2048, 256)
+        # )
+        layers = []
+        projection_head_dims.insert(0, dim)
+        for i in range(len(projection_head_dims) - 2):
+            layers.append(nn.Linear(projection_head_dims[i], projection_head_dims[i + 1]))
+            layers.append(nn.BatchNorm1d(projection_head_dims[i + 1]))
+            layers.append(nn.ReLU(True))
+        layers.append(nn.Linear(projection_head_dims[-2], projection_head_dims[-1], bias=False))
+        self.projector = nn.Sequential(*layers)
 
     def _forward_helper(self, im):
         im_models = []
@@ -313,7 +322,7 @@ class VICReg(nn.Module):
     #             im_models.append(im_model)
     #     return im_models
 
-    def forward(self, x, y = None):
+    def forward(self, x, y = None, return_loss_and_features = False):
         if y is None:
             x_models = self._forward_helper(x)
             x = self.fusion_head(*x_models)
@@ -321,6 +330,7 @@ class VICReg(nn.Module):
         
         x_models = self._forward_helper(x)
         x = self.fusion_head(*x_models)
+        features = x.clone()
         x = self.projector(x)
 
         y_models = self._forward_helper(y)
@@ -344,12 +354,22 @@ class VICReg(nn.Module):
             self.num_features
         ) + off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
 
-        loss = (
-            self.sim_coeff * repr_loss
-            + self.std_coeff * std_loss
-            + self.cov_coeff * cov_loss
-        )
-        return loss
+        # loss = (
+        #     self.sim_coeff * repr_loss
+        #     + self.std_coeff * std_loss
+        #     + self.cov_coeff * cov_loss
+        # )
+        if return_loss_and_features:
+            return repr_loss, std_loss, cov_loss, features
+        else:
+            return repr_loss, std_loss, cov_loss
+    
+    def get_alphas(self):
+        alphas = {}
+        for i, alpha in enumerate(self.fusion_head.alphas):
+            name = f"{self.input_names[i]}_alpha"
+            alphas[name] = alpha
+        return alphas
 
 # def Projector(args, embedding):
 #     mlp_spec = f"{embedding}-{args.mlp}"
