@@ -8,13 +8,11 @@
 import torch
 import torch.nn as nn
 
-from .clip_model import CLIP
-from .dino_v2 import DINO_v2
-from .convnext import ConvNeXtv2
-from .fusion_heads import AttentionFusionHead, LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas, LinearFusionHeadSmall, LinearFusionHeadBase
+from models import CLIP, DINO_v2, ConvNeXtv2
+from models.fusion_heads import AttentionFusionHead, LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas, LinearFusionHeadSmall, LinearFusionHeadBase
 
 
-class DINO_CLIP(nn.Module):
+class MoCo(nn.Module):
     """
     Build a MoCo model with: a query encoder, a key encoder, and a queue
     https://arxiv.org/abs/1911.05722
