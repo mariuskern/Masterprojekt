@@ -107,7 +107,7 @@ def main():
             tqdm_data_loader.set_postfix(postfix)
 
             # Val
-            if (batch_global + 1) % EVAL_AFTER == 0 or (batch_global + 1) == batch_max:
+            if (batch_global + 1) % EVAL_AFTER == 0 or (batch_global + 1) == batch_max or batch_global == 5:
                 result = {}
 
                 model.eval()

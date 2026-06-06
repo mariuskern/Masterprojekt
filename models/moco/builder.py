@@ -20,7 +20,7 @@ class MoCo(nn.Module):
 
     def __init__(
         self,
-        transform=None,
+        # transform=None,
         clip_model_name: str = "ViT-B/32",
         dino_model_name: str = "dinov2_vitb14",
         use_dino_cls_and_patch_tokens: bool = False,
@@ -36,7 +36,8 @@ class MoCo(nn.Module):
         fusion_head = "Linear",
         use_weighted_concat = False,
         use_proj = False,
-        proj_dim = 512
+        proj_dim = 512,
+        projection_head_dims = None,
     ) -> None:
         """
         dim: feature dimension (default: 512)
@@ -44,7 +45,7 @@ class MoCo(nn.Module):
         m: moco momentum of updating key encoder (default: 0.999)
         T: softmax temperature (default: 0.07)
         """
-        super(DINO_CLIP, self).__init__()
+        super(MoCo, self).__init__()
 
         if "Linear" not in fusion_head and use_weighted_concat:
             raise ValueError("use_weighted_concat is only supported for Linear fusion head")
@@ -52,7 +53,7 @@ class MoCo(nn.Module):
         if (fusion_head == "LinearSmallOld" or fusion_head == "LinearBaseOld") and use_dino_cls_and_patch_tokens:
             raise ValueError("use_dino_cls_and_patch_tokens is not supported for LinearSmallOld and LinearBaseOld fusion heads")
 
-        self.transform = transform
+        # self.transform = transform
         self.clip_transform = clip_transform
         self.dino_transform = dino_transform
         self.convnext_transform = convnext_transform
@@ -142,14 +143,48 @@ class MoCo(nn.Module):
         #         nn.Linear(dim_mlp, dim_mlp), nn.ReLU(), self.encoder_k.fc
         #     )
 
+        if projection_head_dims is not None:
+            projection_head_dims.insert(0, dim)
+
+            layers_q = []
+            for i in range(len(projection_head_dims) - 2):
+                layers_q.append(nn.Linear(projection_head_dims[i], projection_head_dims[i + 1]))
+                layers_q.append(nn.BatchNorm1d(projection_head_dims[i + 1]))
+                layers_q.append(nn.ReLU(True))
+            layers_q.append(nn.Linear(projection_head_dims[-2], projection_head_dims[-1], bias=False))
+            self.projector_q = nn.Sequential(*layers_q)
+
+            layers_k = []
+            for i in range(len(projection_head_dims) - 2):
+                layers_k.append(nn.Linear(projection_head_dims[i], projection_head_dims[i + 1]))
+                layers_k.append(nn.BatchNorm1d(projection_head_dims[i + 1]))
+                layers_k.append(nn.ReLU(True))
+            layers_k.append(nn.Linear(projection_head_dims[-2], projection_head_dims[-1], bias=False))
+            self.projector_k = nn.Sequential(*layers_k)
+        else:
+            self.projector_q = nn.Identity()
+            self.projector_k = nn.Identity()
+
         for param_q, param_k in zip(
             self.encoder_q.parameters(), self.encoder_k.parameters()
         ):
             param_k.data.copy_(param_q.data)  # initialize
             param_k.requires_grad = False  # not update by gradient
 
-        # create the queue
-        self.register_buffer("queue", torch.randn(dim, K))
+        for param_q, param_k in zip(
+            self.projector_q.parameters(), self.projector_k.parameters()
+        ):
+            param_k.data.copy_(param_q.data)  # initialize
+            param_k.requires_grad = False  # not update by gradient
+
+        # # create the queue
+        # self.register_buffer("queue", torch.randn(dim, K))
+        # self.queue = nn.functional.normalize(self.queue, dim=0)
+
+        if projection_head_dims is None:
+            self.register_buffer("queue", torch.randn(dim, K))
+        else:
+            self.register_buffer("queue", torch.randn(projection_head_dims[-1], K))
         self.queue = nn.functional.normalize(self.queue, dim=0)
 
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
@@ -161,6 +196,11 @@ class MoCo(nn.Module):
         """
         for param_q, param_k in zip(
             self.encoder_q.parameters(), self.encoder_k.parameters()
+        ):
+            param_k.data = param_k.data * self.m + param_q.data * (1.0 - self.m)
+        
+        for param_q, param_k in zip(
+            self.projector_q.parameters(), self.projector_k.parameters()
         ):
             param_k.data = param_k.data * self.m + param_q.data * (1.0 - self.m)
 
@@ -288,13 +328,14 @@ class MoCo(nn.Module):
             logits, targets
         """
 
-        if self.transform is not None:
-            im_q = self.transform(im_q)
-            if im_k is not None:
-                im_k = self.transform(im_k)
+        # if self.transform is not None:
+        #     im_q = self.transform(im_q)
+        #     if im_k is not None:
+        #         im_k = self.transform(im_k)
         
-        im_q_models = self._forward_helper(im_q)
-        q = self.encoder_q(*im_q_models)
+        # im_q_models = self._forward_helper(im_q)
+        # q = self.encoder_q(*im_q_models)
+        # features = q.clone()
 
         # img_q_clip = self.clip_model(im_q)
         # img_q_clip = nn.functional.normalize(img_q_clip, p=2, dim=1)
@@ -318,8 +359,20 @@ class MoCo(nn.Module):
         # q = self.encoder_q(img_q_clip, img_q_dino_cls, img_q_dino_patch)  # queries: NxC
         # # q = nn.functional.normalize(q, dim=1)
 
+        # if im_k is None:
+        #     return features
+        
+        # q = self.projector_q(q)
+
         if im_k is None:
+            im_q_models = self._forward_helper(im_q)
+            q = self.encoder_q(*im_q_models)
             return q
+
+        im_q_models = self._forward_helper(im_q)
+        q = self.encoder_q(*im_q_models)
+        features = q.clone()
+        q = self.projector_q(q)
 
         # compute key features
         with torch.no_grad():  # no gradient to keys
@@ -330,6 +383,7 @@ class MoCo(nn.Module):
 
             im_k_models = self._forward_helper(im_k)
             k = self.encoder_k(*im_k_models)
+            k = self.projector_k(k)
 
             # img_k_clip = self.clip_model(im_k)
             # img_k_clip = nn.functional.normalize(img_k_clip, p=2, dim=1)
@@ -376,7 +430,7 @@ class MoCo(nn.Module):
         # dequeue and enqueue
         self._dequeue_and_enqueue_without_dpp(k)
 
-        return logits, labels, q
+        return logits, labels, features
 
 
 # utils

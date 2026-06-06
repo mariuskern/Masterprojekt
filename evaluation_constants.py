@@ -6,23 +6,28 @@ DISTANCE = "l2"
 K = [1, 5]
 
 # DATASETS = ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
-DATASETS = ["Places365"]
+DATASETS = ["ImageNet"]
 
 MODELS = [
     {
         "name": "CLIP",
         "architecture": "CLIP",
-        "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
+        # "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
     },
     {
         "name": "DINO_v2",
         "architecture": "DINO_v2",
-        "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
+        # "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
+    },
+    {
+        "name": "ConvNeXt_v2",
+        "architecture": "ConvNeXt_v2",
+        # "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
     },
     {
         "name": "CombinedModel",
         "architecture": "CombinedModel",
-        "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
+        # "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
     },
 
     # # Places365
@@ -222,18 +227,18 @@ MODELS = [
     # },
 
     # VICReg
-    {
-        "name": "VICReg (18.05.2026 - 20:21)",
-        "architecture": "VICReg",
-        "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\vicreg\dinov2_vitb14_vit-b32_places365_20260518_202116\state_dict_epoch_2_batch_570_batch_global_51200.pt",
-        "clip_model_name": "ViT-B/32",
-        "dino_model_name": "dinov2_vitb14",
-        "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
-        "dim": 1024,
-        "fusion_head": "LinearSmall",
-        "use_weighted_concat": False,
-        "use_dino_cls_and_patch_tokens": True,
-        "use_proj": False,
-        "proj_dim": 0,
-    },
+    # {
+    #     "name": "VICReg (18.05.2026 - 20:21)",
+    #     "architecture": "VICReg",
+    #     "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\vicreg\dinov2_vitb14_vit-b32_places365_20260518_202116\state_dict_epoch_2_batch_570_batch_global_51200.pt",
+    #     "clip_model_name": "ViT-B/32",
+    #     "dino_model_name": "dinov2_vitb14",
+    #     "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
+    #     "dim": 1024,
+    #     "fusion_head": "LinearSmall",
+    #     "use_weighted_concat": False,
+    #     "use_dino_cls_and_patch_tokens": True,
+    #     "use_proj": False,
+    #     "proj_dim": 0,
+    # },
 ]

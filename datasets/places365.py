@@ -102,6 +102,9 @@ class Places365(AbstractPlaces365):
         return self.places365[index]
     
     def getSubset(self, image_num, classes=None):
+        if self.split == "val":
+            raise ValueError("Subset for validation split not supported yet")
+        
         if classes == None:
             indices = random.sample(range(0, self.__len__()), min(image_num, self.__len__()))
             return data.Subset(self, indices)

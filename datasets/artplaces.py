@@ -96,6 +96,9 @@ class ArtPlaces(AbstractArtPlaces):
         return image, label
     
     def getSubset(self, image_num, classes=None):
+        if self.split == "val":
+            raise ValueError("Subset for validation should probably work but needs to be checked first")
+        
         if classes == None:
             indices = random.sample(range(0, self.__len__()), min(image_num, self.__len__()))
             return data.Subset(self, indices)

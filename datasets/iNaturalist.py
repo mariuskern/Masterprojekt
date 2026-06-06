@@ -53,6 +53,7 @@ class AbstractINaturalist(data.Dataset, ABC):
         self.len = 0
 
         self.class_to_idxs = {}
+        self.imgs = []
 
         self.tmp = {
             "class_to_idxs": defaultdict(list),
@@ -60,6 +61,9 @@ class AbstractINaturalist(data.Dataset, ABC):
 
         for i, category in enumerate(self.iNaturalist.all_categories):
             l = len(os.listdir(os.path.join(self.root, self.version, category)))
+
+            for img in os.listdir(os.path.join(self.root, self.version, category)):
+                self.imgs.append(os.path.join(self.version, category, img))
 
             start = self.len
             end = self.len + l - 1
@@ -93,13 +97,6 @@ class AbstractINaturalist(data.Dataset, ABC):
     def __getitem__(self, index):
         pass
 
-class iNaturalist(AbstractINaturalist):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-    
-    def __getitem__(self, index):
-        return self.iNaturalist[index]
-    
     def getSubset(self, image_num, classes=None):
         if classes == None:
             indices = random.sample(range(0, self.__len__()), min(image_num, self.__len__()))
@@ -120,3 +117,20 @@ class iNaturalist(AbstractINaturalist):
             indices = indices + random.sample(range(start, end+1), min(num, (end+1)-start))
         
         return data.Subset(self, indices)
+
+class iNaturalist(AbstractINaturalist):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
+    def __getitem__(self, index):
+        return self.iNaturalist[index]
+
+class iNaturalistPath(AbstractINaturalist):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
+    def __getitem__(self, index):
+        _, target = self.iNaturalist[index]
+        path = self.imgs[index]
+
+        return path, target

@@ -5,8 +5,7 @@ from sklearn.metrics import confusion_matrix
 from tqdm import tqdm
 import faiss
 
-from models import CLIP, DINO_v2, CombinedModel, DINO_CLIP
-from models.vicreg.main_vicreg import VICReg
+from models import CLIP, DINO_v2, ConvNeXtv2, CombinedModel, MoCo, VICReg
 from datasets import Transforms
 
 
@@ -20,11 +19,13 @@ def create_model(model_info, device=torch.device("cuda" if torch.cuda.is_availab
             model = CLIP(transform=Transforms.CLIP.value)
         case "DINO_v2":
             model = DINO_v2(transform=Transforms.DINO_v2.value)
+        case "ConvNeXt_v2":
+            model = ConvNeXtv2(transform=Transforms.CONVNEXT.value)
         case "CombinedModel":
-            model = CombinedModel(clip_transform=Transforms.CLIP.value, dino_transform=Transforms.DINO_v2.value)
-        case "DINO_CLIP":
-            model = DINO_CLIP(
-                transform = Transforms.DINO_CLIP.value,
+            model = CombinedModel(clip_transform=Transforms.CLIP.value, dino_transform=Transforms.DINO_v2.value, convnext_transform = Transforms.CONVNEXT.value)
+        case "MoCo":
+            model = MoCo(
+                # transform = None,
                 clip_model_name = model_info["clip_model_name"],
                 dino_model_name = model_info["dino_model_name"],
                 convnext_model_name = model_info["convnext_model_name"],
