@@ -6,7 +6,7 @@ from enum import Enum
 from abc import ABC, abstractmethod
 import csv
 from PIL import Image
-from .github.places365_without_integrity_check import Places365 as Places365_pytorch
+from .github.places.places365_without_integrity_check import Places365 as Places365_pytorch
 
 from .dataset_utils import Transforms
 

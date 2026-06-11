@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 from models import CLIP, DINO_v2, ConvNeXtv2
-from models.fusion_heads import AttentionFusionHead, LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas, LinearFusionHeadSmall, LinearFusionHeadBase
+from models.fusion_heads import AttentionFusionHead, LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas, LinearFusionHeadSmall, LinearFusionHeadBase, PoolingFusionHead
 
 
 class MoCo(nn.Module):
@@ -37,6 +37,7 @@ class MoCo(nn.Module):
         use_weighted_concat = False,
         use_proj = False,
         proj_dim = 512,
+        pooling = None,
         projection_head_dims = None,
     ) -> None:
         """
@@ -130,6 +131,9 @@ class MoCo(nn.Module):
             case "LinearBase":
                 self.encoder_q = LinearFusionHeadBase(input_dims=self.input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
                 self.encoder_k = LinearFusionHeadBase(input_dims=self.input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
+            case "Pooling":
+                self.encoder_q = PoolingFusionHead(input_dims=self.input_dims, output_dim=dim, pooling=pooling)
+                self.encoder_k = PoolingFusionHead(input_dims=self.input_dims, output_dim=dim, pooling=pooling)
             case "Attention":
                 self.encoder_q = AttentionFusionHead(output_dim=dim)
                 self.encoder_k = AttentionFusionHead(output_dim=dim)
@@ -294,6 +298,9 @@ class MoCo(nn.Module):
         return x[idx_unshuffle]
     
     def get_alphas(self):
+        if not hasattr(self.encoder_q, "alphas"):
+            return {}
+        
         alphas = {}
         # for i, name in enumerate(self.input_names):
         #     alpha_name = f"alpha_{name}"

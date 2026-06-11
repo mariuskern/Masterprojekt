@@ -26,7 +26,7 @@ import torchvision.datasets as datasets
 # import resnet
 
 from models import CLIP, DINO_v2, ConvNeXtv2
-from models.fusion_heads import LinearFusionHeadSmall, LinearFusionHeadBase, AttentionFusionHead
+from models.fusion_heads import LinearFusionHeadSmall, LinearFusionHeadBase, AttentionFusionHead, PoolingFusionHead
 
 
 # def get_arguments():
@@ -205,6 +205,7 @@ class VICReg(nn.Module):
             use_weighted_concat = False,
             use_proj = False,
             proj_dim = 512,
+            pooling = None,
             projection_head_dims = [2048, 2048, 256]
         ):
 
@@ -268,6 +269,8 @@ class VICReg(nn.Module):
                 self.fusion_head = LinearFusionHeadSmall(input_dims=self.input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
             case "LinearBase":
                 self.fusion_head = LinearFusionHeadBase(input_dims=self.input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
+            case "Pooling":
+                self.fusion_head = PoolingFusionHead(input_dims=self.input_dims, output_dim=dim, pooling=pooling)
             case "Attention":
                 self.fusion_head = AttentionFusionHead(output_dim=dim)
         
@@ -365,6 +368,9 @@ class VICReg(nn.Module):
             return repr_loss, std_loss, cov_loss
     
     def get_alphas(self):
+        if not hasattr(self.fusion_head, "alphas"):
+            return {}
+        
         alphas = {}
         for i, alpha in enumerate(self.fusion_head.alphas):
             name = f"{self.input_names[i]}_alpha"

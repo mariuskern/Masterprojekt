@@ -1,12 +1,10 @@
-import torchvision
+# import torchvision
 from torch.utils import data
 import os
 import random
-from enum import Enum
 from abc import ABC, abstractmethod
-import csv
-from PIL import Image
 from collections import defaultdict
+from .github.inaturalist.inaturalist_without_integrity_check import INaturalist as INaturalist_pytorch
 
 from .dataset_utils import Transforms
 
@@ -22,7 +20,13 @@ class AbstractINaturalist(data.Dataset, ABC):
 
         super().__init__()
 
-        # kingdom, phylum, class, order, family, genus, species
+        '''
+        kingdom, phylum, class, order, family, genus, species
+
+        all_categories: ['00000_Animalia_Annelida_Clitellata_Haplotaxida_Lumbricidae_Lumbricus_terrestris', '00001_Animalia_Annelida_Polychaeta_Sabellida_Sabellidae_Sabella_spallanzanii', ...]
+        categories_index: {'kingdom': {'Animalia': 0, 'Fungi': 1, 'Plantae': 2}, 'phylum': {'Annelida': 0, 'Arthropoda': 1, 'Chordata': 2, 'Cnidaria': 3, ...}, ...}
+        categories_map: [{'kingdom': 0, 'phylum': 0, 'class': 0, 'order': 0, 'family': 0, 'genus': 0}, {'kingdom': 0, 'phylum': 0, 'class': 1, 'order': 1, 'family': 1, 'genus': 1}, ...]
+        '''
 
         if split != "train" and split != "train_mini" and split != "val":
             raise ValueError("Split can only be train or val")
@@ -42,7 +46,8 @@ class AbstractINaturalist(data.Dataset, ABC):
         else:
             self.version = "2021_valid"
 
-        self.iNaturalist = torchvision.datasets.INaturalist(root=self.root, version=self.version, target_type=self.target_type, transform=self.transform, download=False)
+        # self.iNaturalist = torchvision.datasets.INaturalist(root=self.root, version=self.version, target_type=self.target_type, transform=self.transform, download=False)
+        self.iNaturalist = INaturalist_pytorch(root=self.root, version=self.version, target_type=self.target_type, transform=self.transform, download=False)
         
         self.class_to_idx = {}
         self.idx_to_class = {}
@@ -118,14 +123,14 @@ class AbstractINaturalist(data.Dataset, ABC):
         
         return data.Subset(self, indices)
 
-class iNaturalist(AbstractINaturalist):
+class INaturalist(AbstractINaturalist):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
     def __getitem__(self, index):
         return self.iNaturalist[index]
 
-class iNaturalistPath(AbstractINaturalist):
+class INaturalistPath(AbstractINaturalist):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     

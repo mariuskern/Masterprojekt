@@ -1,7 +1,15 @@
 import torch
 import numpy as np
 from collections import Counter
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    balanced_accuracy_score,
+    classification_report
+)
 from tqdm import tqdm
 import faiss
 
@@ -26,21 +34,22 @@ def create_model(model_info, device=torch.device("cuda" if torch.cuda.is_availab
         case "MoCo":
             model = MoCo(
                 # transform = None,
-                clip_model_name = model_info["clip_model_name"],
                 dino_model_name = model_info["dino_model_name"],
+                clip_model_name = model_info["clip_model_name"],
                 convnext_model_name = model_info["convnext_model_name"],
+                use_dino_cls_and_patch_tokens = model_info["use_dino_cls_and_patch_tokens"],
                 clip_transform=Transforms.CLIP.value,
                 dino_transform=Transforms.DINO_v2.value,
                 convnext_transform = Transforms.CONVNEXT.value,
+                fusion_head=model_info["fusion_head"],
                 dim=model_info["dim"],
+                use_weighted_concat = model_info["use_weighted_concat"],
+                use_proj = model_info["use_proj"],
+                proj_dim = model_info["proj_dim"],
                 K=model_info["K"],
                 # m=model_info["m"],
                 # T=model_info["T"],
-                fusion_head=model_info["fusion_head"],
-                use_weighted_concat = model_info["use_weighted_concat"],
-                use_dino_cls_and_patch_tokens = model_info["use_dino_cls_and_patch_tokens"],
-                use_proj = model_info["use_proj"],
-                proj_dim = model_info["proj_dim"]
+                projection_head_dims = model_info["projection_head_dims"]
             )
             if model_info["weights"] is not None:
                 model.load_state_dict(torch.load(model_info["weights"]))
@@ -58,7 +67,9 @@ def create_model(model_info, device=torch.device("cuda" if torch.cuda.is_availab
                 dim = model_info["dim"],
                 use_weighted_concat = model_info["use_weighted_concat"],
                 use_proj = model_info["use_proj"],
-                proj_dim = model_info["proj_dim"]
+                proj_dim = model_info["proj_dim"],
+                pooling = model_info["pooling"],
+                projection_head_dims = model_info["projection_head_dims"]
             )
     
     for p in model.parameters():
@@ -101,12 +112,21 @@ def extract_features(model, dataloader, device=torch.device("cuda" if torch.cuda
     return features, labels
 
 def evaluate_features(features, labels, distance, ks):
+    # result = {
+    #     "per_class": {
+    #         "mean": {},
+    #         "std": {},
+    #         "matrix": {}
+    #     }
+    # }
+
+    # result = {}
     result = {
-        "per_class": {
-            "mean": {},
-            "std": {},
-            "matrix": {}
-        }
+        "accuracy": {},
+        "matrix": {},
+        "precision": {},
+        "recall": {},
+        "f1": {}
     }
 
     match distance:
@@ -122,95 +142,202 @@ def evaluate_features(features, labels, distance, ks):
     I = I[:, 1:]  # Remove self-match
 
     for k in ks:
-        overall_accuracy, accuracy_mean, accuracy_std, accuracy_per_class, accuracy_matrix = calculate_accuracy(I, labels, k)
-        precision_mean, precision_std, precision_per_class, precision_matrix = calculate_precision(I, labels, k)
-        recall_mean, recall_std, recall_per_class, recall_matrix = calculate_recall(I, labels, k)
+        # result[k] = {}
+        # result["precision@" + str(k)] = {}
+        # result["recall@" + str(k)] = {}
+        # result["f1@" + str(k)] = {}
+        result["precision"][k] = {}
+        result["recall"][k] = {}
+        result["f1"][k] = {}
 
-        result["Accuracy@" + str(k)] = overall_accuracy
-        result["per_class"]["mean"]["Accuracy@" + str(k)] = accuracy_mean
-        result["per_class"]["mean"]["Precision@" + str(k)] = precision_mean
-        result["per_class"]["mean"]["Recall@" + str(k)] = recall_mean
-        result["per_class"]["std"]["Accuracy@" + str(k)] = accuracy_std
-        result["per_class"]["std"]["Precision@" + str(k)] = precision_std
-        result["per_class"]["std"]["Recall@" + str(k)] = recall_std
-        result["per_class"]["matrix"]["Accuracy@" + str(k)] = accuracy_matrix
-        result["per_class"]["matrix"]["Precision@" + str(k)] = precision_matrix
-        result["per_class"]["matrix"]["Recall@" + str(k)] = recall_matrix
-        result["per_class"]["Accuracy@" + str(k)] = accuracy_per_class
-        result["per_class"]["Precision@" + str(k)] = precision_per_class
-        result["per_class"]["Recall@" + str(k)] = recall_per_class
+        predictions = get_predictions(I[:, :k], labels)
+
+        matrix = confusion_matrix(labels, predictions)
+        # result["matrix@" + str(k)] = matrix.tolist()
+        result["matrix"][k] = matrix.tolist()
+
+        # report = classification_report(
+        #     labels,
+        #     predictions,
+        #     output_dict=True,
+        #     zero_division=0
+        # )
+        # result[k]["report"] = report
+
+        accuracy = accuracy_score(labels, predictions)
+        # result["accuracy@" + str(k)] = accuracy
+        result["accuracy"][k] = accuracy
+
+        per_class_precision = precision_score(
+            labels,
+            predictions,
+            average=None,
+            zero_division=0
+        )
+        # result["precision@" + str(k)]["per_class"] = per_class_precision.tolist()
+        # result["precision@" + str(k)]["mean"] = per_class_precision.mean().item()
+        # result["precision@" + str(k)]["std"] = per_class_precision.std().item()
+        result["precision"][k]["per_class"] = per_class_precision.tolist()
+        result["precision"][k]["mean"] = per_class_precision.mean().item()
+        result["precision"][k]["std"] = per_class_precision.std().item()
+
+        per_class_recall = recall_score(
+            labels,
+            predictions,
+            average=None,
+            zero_division=0
+        )
+        # result["recall@" + str(k)]["per_class"] = per_class_recall.tolist()
+        # result["recall@" + str(k)]["mean"] = per_class_recall.mean().item()
+        # result["recall@" + str(k)]["std"] = per_class_recall.std().item()
+        result["recall"][k]["per_class"] = per_class_recall.tolist()
+        result["recall"][k]["mean"] = per_class_recall.mean().item()
+        result["recall"][k]["std"] = per_class_recall.std().item()
+
+        per_class_f1 = f1_score(
+            labels,
+            predictions,
+            average=None,
+            zero_division=0
+        )
+        # result["f1@" + str(k)]["per_class"] = per_class_f1.tolist()
+        # result["f1@" + str(k)]["mean"] = per_class_f1.mean().item()
+        # result["f1@" + str(k)]["std"] = per_class_f1.std().item()
+        result["f1"][k]["per_class"] = per_class_f1.tolist()
+        result["f1"][k]["mean"] = per_class_f1.mean().item()
+        result["f1"][k]["std"] = per_class_f1.std().item()
+
+        # balanced_accuracy = balanced_accuracy_score(
+        #     labels,
+        #     predictions
+        # )
     
     return result
 
-def calculate_accuracy(I, labels, k):
-    """
-    Calculate overall accuracy and per-class accuracy.
-    """
-
-    I = I[:, :k]
-
+def get_predictions(I, labels):
     predictions_labels = labels[I]
     predictions = np.array([Counter(i).most_common(1)[0][0] for i in predictions_labels])
+    return predictions
+
+# def evaluate_features(features, labels, distance, ks):
+#     result = {
+#         "per_class": {
+#             "mean": {},
+#             "std": {},
+#             "matrix": {}
+#         }
+#     }
+
+#     match distance:
+#         case "l2":
+#             index = faiss.IndexFlatL2(features.shape[1])
+#         case "cosine":
+#             faiss.normalize_L2(features)
+#             index = faiss.IndexFlatIP(features.shape[1])
     
-    # matches = predictions == labels
-    # correct = matches.sum()
-    # all_predictions = matches.size
-    # accuracy2 = correct / all_predictions
+#     index.add(features)
 
-    overall_accuracy = np.mean(predictions == labels)
+#     _, I = index.search(features, max(ks) + 1)  # + 1 to account for self-match
+#     I = I[:, 1:]  # Remove self-match
 
-    matrix = confusion_matrix(labels, predictions)
-    accuracy = matrix.diagonal()/matrix.sum(axis=1)
+#     for k in ks:
+#         overall_accuracy, accuracy_mean, accuracy_std, accuracy_per_class, accuracy_matrix = calculate_accuracy(I, labels, k)
+#         precision_mean, precision_std, precision_per_class, precision_matrix = calculate_precision(I, labels, k)
+#         recall_mean, recall_std, recall_per_class, recall_matrix = calculate_recall(I, labels, k)
 
-    return overall_accuracy, accuracy.mean(), accuracy.std(), accuracy.tolist(), matrix.tolist()
-
-def calculate_precision(I, labels, k):
-    """
-    Calculate per-class precision.
-    """
-
-    I = I[:, :k]
-
-    predictions_labels = labels[I]
-    predictions = np.array([Counter(i).most_common(1)[0][0] for i in predictions_labels])
-    tp, fp, _, _ = confusion_per_class(predictions, labels)
-
-    matrix = confusion_matrix(labels, predictions)
-
-    precision = tp / (tp + fp + 1e-8)
-    return precision.mean(), precision.std(), precision.tolist(), matrix.tolist()
-
-def calculate_recall(I, labels, k):
-    """
-    Calculate per-class recall.
-    """
-
-    I = I[:, :k]
-
-    predictions_labels = labels[I]
-    predictions = np.array([Counter(i).most_common(1)[0][0] for i in predictions_labels])
-    tp, _, _, fn = confusion_per_class(predictions, labels)
-
-    matrix = confusion_matrix(labels, predictions)
-
-    recall = tp / (tp + fn + 1e-8)
-    return recall.mean(), recall.std(), recall.tolist(), matrix.tolist()
-
-def confusion_per_class(predictions, labels):
-    """
-    Helper method to compute true positives, false positives, true negatives, and false negatives per class.
-    """
-
-    num_classes = max(labels.max(), predictions.max()) + 1
-    tp = np.zeros(num_classes, dtype=int)
-    fp = np.zeros(num_classes, dtype=int)
-    fn = np.zeros(num_classes, dtype=int)
-    tn = np.zeros(num_classes, dtype=int)
+#         result["Accuracy@" + str(k)] = overall_accuracy
+#         result["per_class"]["mean"]["Accuracy@" + str(k)] = accuracy_mean
+#         result["per_class"]["mean"]["Precision@" + str(k)] = precision_mean
+#         result["per_class"]["mean"]["Recall@" + str(k)] = recall_mean
+#         result["per_class"]["std"]["Accuracy@" + str(k)] = accuracy_std
+#         result["per_class"]["std"]["Precision@" + str(k)] = precision_std
+#         result["per_class"]["std"]["Recall@" + str(k)] = recall_std
+#         result["per_class"]["matrix"]["Accuracy@" + str(k)] = accuracy_matrix
+#         result["per_class"]["matrix"]["Precision@" + str(k)] = precision_matrix
+#         result["per_class"]["matrix"]["Recall@" + str(k)] = recall_matrix
+#         result["per_class"]["Accuracy@" + str(k)] = accuracy_per_class
+#         result["per_class"]["Precision@" + str(k)] = precision_per_class
+#         result["per_class"]["Recall@" + str(k)] = recall_per_class
     
-    for c in range(num_classes):
-        tp[c] = np.sum((predictions == c) & (labels == c))
-        fp[c] = np.sum((predictions == c) & (labels != c))
-        tn[c] = np.sum((predictions != c) & (labels != c))
-        fn[c] = np.sum((predictions != c) & (labels == c))
+#     return result
+
+# def calculate_accuracy(I, labels, k):
+#     """
+#     Calculate overall accuracy and per-class accuracy.
+#     """
+
+#     I = I[:, :k]
+
+#     # predictions_labels = labels[I]
+#     # predictions = np.array([Counter(i).most_common(1)[0][0] for i in predictions_labels])
+#     predictions = get_predictions(I, labels)
     
-    return tp, fp, tn, fn
+#     # matches = predictions == labels
+#     # correct = matches.sum()
+#     # all_predictions = matches.size
+#     # accuracy2 = correct / all_predictions
+
+#     overall_accuracy = np.mean(predictions == labels)
+
+#     matrix = confusion_matrix(labels, predictions)
+#     accuracy = matrix.diagonal()/matrix.sum(axis=1) # Identisch zu Recall?
+
+#     return overall_accuracy, accuracy.mean(), accuracy.std(), accuracy.tolist(), matrix.tolist()
+
+# def calculate_precision(I, labels, k):
+#     """
+#     Calculate per-class precision.
+#     """
+
+#     I = I[:, :k]
+
+#     # predictions_labels = labels[I]
+#     # predictions = np.array([Counter(i).most_common(1)[0][0] for i in predictions_labels])
+#     predictions = get_predictions(I, labels)
+#     tp, fp, _, _ = confusion_per_class(predictions, labels)
+
+#     matrix = confusion_matrix(labels, predictions)
+
+#     precision = tp / (tp + fp + 1e-8)
+#     return precision.mean(), precision.std(), precision.tolist(), matrix.tolist()
+
+# def calculate_recall(I, labels, k):
+#     """
+#     Calculate per-class recall.
+#     """
+
+#     I = I[:, :k]
+
+#     # predictions_labels = labels[I]
+#     # predictions = np.array([Counter(i).most_common(1)[0][0] for i in predictions_labels])
+#     predictions = get_predictions(I, labels)
+#     tp, _, _, fn = confusion_per_class(predictions, labels)
+
+#     matrix = confusion_matrix(labels, predictions)
+
+#     recall = tp / (tp + fn + 1e-8)
+#     return recall.mean(), recall.std(), recall.tolist(), matrix.tolist()
+
+# def get_predictions(I, labels):
+#     predictions_labels = labels[I]
+#     predictions = np.array([Counter(i).most_common(1)[0][0] for i in predictions_labels])
+#     return predictions
+
+# def confusion_per_class(predictions, labels):
+#     """
+#     Helper method to compute true positives, false positives, true negatives, and false negatives per class.
+#     """
+
+#     num_classes = max(labels.max(), predictions.max()) + 1
+#     tp = np.zeros(num_classes, dtype=int)
+#     fp = np.zeros(num_classes, dtype=int)
+#     fn = np.zeros(num_classes, dtype=int)
+#     tn = np.zeros(num_classes, dtype=int)
+    
+#     for c in range(num_classes):
+#         tp[c] = np.sum((predictions == c) & (labels == c))
+#         fp[c] = np.sum((predictions == c) & (labels != c))
+#         tn[c] = np.sum((predictions != c) & (labels != c))
+#         fn[c] = np.sum((predictions != c) & (labels == c))
+    
+#     return tp, fp, tn, fn

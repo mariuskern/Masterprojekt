@@ -6,29 +6,173 @@ DISTANCE = "l2"
 K = [1, 5]
 
 # DATASETS = ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
-DATASETS = ["ImageNet"]
+DATASETS = ["iNaturalist_Family"]
 
 MODELS = [
     {
         "name": "CLIP",
-        "architecture": "CLIP",
-        # "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
+        "architecture": "CLIP"
     },
     {
         "name": "DINO_v2",
         "architecture": "DINO_v2",
-        # "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
     },
     {
         "name": "ConvNeXt_v2",
         "architecture": "ConvNeXt_v2",
-        # "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
     },
     {
         "name": "CombinedModel",
         "architecture": "CombinedModel",
-        # "dataset": ["ImageNet", "Places365", "ArtPlaces", "iNaturalist_Family"]
     },
+
+    # # ImageNet Final
+    # {
+    #     "name": "Linear MoCo",
+    #     "architecture": "MoCo",
+    #     "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\dino_clip\dinov2_vitb14_vit-b32_imagenet_20260607_084618\state_dict_epoch_1_batch_781_batch_global_20018.pt",
+    #     "clip_model_name": "ViT-B/32",
+    #     "dino_model_name": "dinov2_vitb14",
+    #     "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
+    #     "dim": 1024,
+    #     "K": 8192,
+    #     "fusion_head": "LinearSmall",
+    #     "use_weighted_concat": False,
+    #     "use_dino_cls_and_patch_tokens": True,
+    #     "use_proj": False,
+    #     "proj_dim": 0,
+    #     "pooling": None,
+    #     "projection_head_dims": None
+    # },
+    # {
+    #     "name": "Linear VICReg",
+    #     "architecture": "VICReg",
+    #     "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\vicreg\dinov2_vitb14_vit-b32_imagenet_20260606_200835\state_dict_epoch_1_batch_781_batch_global_20018.pt",
+    #     "clip_model_name": "ViT-B/32",
+    #     "dino_model_name": "dinov2_vitb14",
+    #     "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
+    #     "dim": 1024,
+    #     "fusion_head": "LinearSmall",
+    #     "use_weighted_concat": False,
+    #     "use_dino_cls_and_patch_tokens": True,
+    #     "use_proj": False,
+    #     "proj_dim": 0,
+    #     "pooling": None,
+    #     "projection_head_dims": [2048, 2048, 256]
+    # },
+
+    # # Places365 Final
+    # {
+    #     "name": "Linear MoCo",
+    #     "architecture": "MoCo",
+    #     "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\dino_clip\dinov2_vitb14_vit-b32_places365_20260606_103020\state_dict_epoch_1_batch_570_batch_global_28179.pt",
+    #     "clip_model_name": "ViT-B/32",
+    #     "dino_model_name": "dinov2_vitb14",
+    #     "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
+    #     "dim": 1024,
+    #     "K": 8192,
+    #     "fusion_head": "LinearSmall",
+    #     "use_weighted_concat": False,
+    #     "use_dino_cls_and_patch_tokens": True,
+    #     "use_proj": False,
+    #     "proj_dim": 0,
+    #     "pooling": None,
+    #     "projection_head_dims": None
+    # },
+    # {
+    #     "name": "Linear VICReg",
+    #     "architecture": "VICReg",
+    #     "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\vicreg\dinov2_vitb14_vit-b32_places365_20260606_004644\state_dict_epoch_1_batch_570_batch_global_28179.pt",
+    #     "clip_model_name": "ViT-B/32",
+    #     "dino_model_name": "dinov2_vitb14",
+    #     "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
+    #     "dim": 1024,
+    #     "fusion_head": "LinearSmall",
+    #     "use_weighted_concat": False,
+    #     "use_dino_cls_and_patch_tokens": True,
+    #     "use_proj": False,
+    #     "proj_dim": 0,
+    #     "pooling": None,
+    #     "projection_head_dims": [2048, 2048, 256]
+    # },
+
+    # # ArtPlaces Final
+    # {
+    #     "name": "Linear MoCo",
+    #     "architecture": "MoCo",
+    #     "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\dino_clip\dinov2_vitb14_vit-b32_artplaces_20260605_191236\state_dict_epoch_75_batch_71_batch_global_5325.pt",
+    #     "clip_model_name": "ViT-B/32",
+    #     "dino_model_name": "dinov2_vitb14",
+    #     "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
+    #     "dim": 1024,
+    #     "K": 1024,
+    #     "fusion_head": "LinearSmall",
+    #     "use_weighted_concat": False,
+    #     "use_dino_cls_and_patch_tokens": True,
+    #     "use_proj": False,
+    #     "proj_dim": 0,
+    #     "pooling": None,
+    #     "projection_head_dims": None
+    # },
+    # {
+    #     "name": "Linear VICReg",
+    #     "architecture": "VICReg",
+    #     "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\vicreg\dinov2_vitb14_vit-b32_artplaces_20260604_181317\state_dict_epoch_75_batch_71_batch_global_5325.pt",
+    #     "clip_model_name": "ViT-B/32",
+    #     "dino_model_name": "dinov2_vitb14",
+    #     "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
+    #     "dim": 1024,
+    #     "fusion_head": "LinearSmall",
+    #     "use_weighted_concat": False,
+    #     "use_dino_cls_and_patch_tokens": True,
+    #     "use_proj": False,
+    #     "proj_dim": 0,
+    #     "pooling": None,
+    #     "projection_head_dims": [2048, 2048, 256]
+    # },
+
+    # # iNaturlaist Final
+    # {
+    #     "name": "Linear MoCo",
+    #     "architecture": "MoCo",
+    #     "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\dino_clip\dinov2_vitb14_vit-b32_inaturalist_20260608_175736\state_dict_epoch_4_batch_350_batch_global_31248.pt",
+    #     "clip_model_name": "ViT-B/32",
+    #     "dino_model_name": "dinov2_vitb14",
+    #     "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
+    #     "dim": 1024,
+    #     "K": 8192,
+    #     "fusion_head": "LinearSmall",
+    #     "use_weighted_concat": False,
+    #     "use_dino_cls_and_patch_tokens": True,
+    #     "use_proj": False,
+    #     "proj_dim": 0,
+    #     "pooling": None,
+    #     "projection_head_dims": None
+    # },
+    # {
+    #     "name": "Linear VICReg",
+    #     "architecture": "VICReg",
+    #     "weights": r"D:\Dokumente\Studium\Masterprojekt\Gewichte\vicreg\dinov2_vitb14_vit-b32_inaturalist_20260607_221420\state_dict_epoch_4_batch_350_batch_global_31248.pt",
+    #     "clip_model_name": "ViT-B/32",
+    #     "dino_model_name": "dinov2_vitb14",
+    #     "convnext_model_name": "convnextv2_nano.fcmae_ft_in22k_in1k",
+    #     "dim": 1024,
+    #     "fusion_head": "LinearSmall",
+    #     "use_weighted_concat": False,
+    #     "use_dino_cls_and_patch_tokens": True,
+    #     "use_proj": False,
+    #     "proj_dim": 0,
+    #     "pooling": None,
+    #     "projection_head_dims": [2048, 2048, 256]
+    # },
+
+
+
+
+
+
+
+
 
     # # Places365
     # {
