@@ -1,4 +1,4 @@
-from .attention import AttentionFusionHead
+from .attention import AttentionFusionHead, TransformerFusionHead
 from .linear_old import LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas
 from .linear import LinearFusionHeadSmall, LinearFusionHeadBase
 from .pooling import PoolingFusionHead

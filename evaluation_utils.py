@@ -49,6 +49,7 @@ def create_model(model_info, device=torch.device("cuda" if torch.cuda.is_availab
                 K=model_info["K"],
                 # m=model_info["m"],
                 # T=model_info["T"],
+                pooling = model_info["pooling"],
                 projection_head_dims = model_info["projection_head_dims"]
             )
             if model_info["weights"] is not None:

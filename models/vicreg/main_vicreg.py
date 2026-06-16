@@ -26,7 +26,7 @@ import torchvision.datasets as datasets
 # import resnet
 
 from models import CLIP, DINO_v2, ConvNeXtv2
-from models.fusion_heads import LinearFusionHeadSmall, LinearFusionHeadBase, AttentionFusionHead, PoolingFusionHead
+from models.fusion_heads import LinearFusionHeadSmall, LinearFusionHeadBase, AttentionFusionHead, PoolingFusionHead, TransformerFusionHead
 
 
 # def get_arguments():
@@ -271,8 +271,10 @@ class VICReg(nn.Module):
                 self.fusion_head = LinearFusionHeadBase(input_dims=self.input_dims, output_dim=dim, use_weighted_concat=use_weighted_concat, use_proj=use_proj, proj_dim=proj_dim)
             case "Pooling":
                 self.fusion_head = PoolingFusionHead(input_dims=self.input_dims, output_dim=dim, pooling=pooling)
+            case "Transformer":
+                self.fusion_head = TransformerFusionHead(input_dims=self.input_dims, output_dim=dim)
             case "Attention":
-                self.fusion_head = AttentionFusionHead(output_dim=dim)
+                self.fusion_head = AttentionFusionHead(input_dims=self.input_dims, output_dim=dim)
         
         # self.projector = nn.Sequential(
         #     nn.Linear(dim, 2048),

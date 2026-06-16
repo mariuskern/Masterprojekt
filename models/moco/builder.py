@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 
 from models import CLIP, DINO_v2, ConvNeXtv2
-from models.fusion_heads import AttentionFusionHead, LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas, LinearFusionHeadSmall, LinearFusionHeadBase, PoolingFusionHead
+from models.fusion_heads import AttentionFusionHead, LinearFusionHeadSmallOldNoAlpha, LinearFusionHeadBaseOldNoAlpha, LinearFusionHeadSmallOldOneAlpha, LinearFusionHeadBaseOldOneAlpha, LinearFusionHeadBaseOldThreeAlphas, LinearFusionHeadSmall, LinearFusionHeadBase, PoolingFusionHead, TransformerFusionHead
 
 
 class MoCo(nn.Module):
@@ -134,9 +134,12 @@ class MoCo(nn.Module):
             case "Pooling":
                 self.encoder_q = PoolingFusionHead(input_dims=self.input_dims, output_dim=dim, pooling=pooling)
                 self.encoder_k = PoolingFusionHead(input_dims=self.input_dims, output_dim=dim, pooling=pooling)
+            case "Transformer":
+                self.encoder_q = TransformerFusionHead(input_dims=self.input_dims, output_dim=dim)
+                self.encoder_k = TransformerFusionHead(input_dims=self.input_dims, output_dim=dim)
             case "Attention":
-                self.encoder_q = AttentionFusionHead(output_dim=dim)
-                self.encoder_k = AttentionFusionHead(output_dim=dim)
+                self.encoder_q = AttentionFusionHead(input_dims=self.input_dims, output_dim=dim)
+                self.encoder_k = AttentionFusionHead(input_dims=self.input_dims, output_dim=dim)
 
         # if mlp:  # hack: brute-force replacement
         #     dim_mlp = self.encoder_q.fc.weight.shape[1]
